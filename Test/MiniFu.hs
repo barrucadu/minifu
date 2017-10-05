@@ -37,6 +37,26 @@ data MVar m a = MVar
   , mvarRef :: C.CRef m (Maybe a)
   }
 
+-- | Fork a computation to happen concurrently.
+fork :: MiniFu m () -> MiniFu m ThreadId
+fork ma = MiniFu (K.cont (Fork ma))
+
+-- | Create a new empty @MVar@.
+newEmptyMVar :: MiniFu m (MVar m a)
+newEmptyMVar = MiniFu (K.cont NewEmptyMVar)
+
+-- | Put a value into a @MVar@. If there is already a value there,
+-- this will block until that value has been taken, at which point the
+-- value will be stored.
+putMVar :: MVar m a -> a -> MiniFu m ()
+putMVar v a = MiniFu (K.cont (\k -> PutMVar v a (k ())))
+
+-- | Take a value from a @MVar@. This "empties" the @MVar@, allowing a
+-- new value to be put in. This will block if there is no value in the
+-- @MVar@ already, until one has been put.
+takeMVar :: MVar m a -> MiniFu m a
+takeMVar v = MiniFu (K.cont (TakeMVar v))
+
 -------------------------------------------------------------------------------
 
 -- | Execute a concurrent computation with a given scheduler, and
