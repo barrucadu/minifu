@@ -71,4 +71,12 @@ takeMVar v = MiniFu (K.cont (TakeMVar v))
 -- | Execute a concurrent computation with a given scheduler, and
 -- return the result.
 minifu :: C.MonadConc m => Scheduler s -> s -> MiniFu m a -> m (Maybe a, s)
-minifu sched s (MiniFu ma) = undefined
+minifu sched s (MiniFu ma) = do
+  out <- C.newCRef Nothing
+  s'  <- run sched s (K.runCont ma (Stop . C.writeCRef out . Just))
+  a   <- C.readCRef out
+  pure (a, s')
+
+-- | Run a collection of threads to completion.
+run :: C.MonadConc m => Scheduler s -> s -> PrimOp m -> m s
+run sched s0 = undefined
