@@ -19,5 +19,6 @@ library
                      , concurrency
                      , containers
                      , mtl
+                     , random
   default-language:    Haskell2010
   ghc-options:         -Wall

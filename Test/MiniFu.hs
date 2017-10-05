@@ -9,6 +9,7 @@ import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (isNothing)
+import qualified System.Random as R
 
 example :: MiniFu m Int
 example = do
@@ -16,6 +17,11 @@ example = do
   fork (putMVar a 1)
   fork (putMVar a 2)
   takeMVar a
+
+demo :: IO ()
+demo = do
+  g <- R.newStdGen
+  print . fst =<< minifu randomSched g example
 
 -------------------------------------------------------------------------------
 
@@ -176,3 +182,11 @@ initialise :: PrimOp m -> (Threads m, IdSource)
 initialise pop =
   let (tid, idsrc) = nextThreadId initialIdSource
   in (M.singleton tid (thread pop), idsrc)
+
+-------------------------------------------------------------------------------
+
+-- | A simple random scheduler.
+randomSched :: R.RandomGen g => Scheduler g
+randomSched (t:|ts) g =
+  let (i, g') = R.randomR (0, length ts) g
+  in ((t:ts) !! i, g')
