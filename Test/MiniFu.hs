@@ -7,6 +7,15 @@ import qualified Control.Concurrent.Classy as C
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Control.Monad.Cont as K
 
+example :: MiniFu m Int
+example = do
+  a <- newEmptyMVar
+  fork (putMVar a 1)
+  fork (putMVar a 2)
+  takeMVar a
+
+-------------------------------------------------------------------------------
+
 -- | Threads are just identified by their creation order.
 newtype ThreadId = ThreadId Int
   deriving (Eq, Ord)
