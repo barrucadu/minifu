@@ -80,3 +80,20 @@ minifu sched s (MiniFu ma) = do
 -- | Run a collection of threads to completion.
 run :: C.MonadConc m => Scheduler s -> s -> PrimOp m -> m s
 run sched s0 = undefined
+
+-------------------------------------------------------------------------------
+
+-- | An identifier source is a simple counter.
+type IdSource = Int
+
+-- | Create an identifier source.
+initialIdSource :: IdSource
+initialIdSource = 0
+
+-- | Get a new unique thread ID.
+nextThreadId :: IdSource -> (ThreadId, IdSource)
+nextThreadId n = (ThreadId n, n + 1)
+
+-- | Get a new unique @MVar@ ID:
+nextMVarId :: IdSource -> (MVarId, IdSource)
+nextMVarId n = (MVarId n, n + 1)
