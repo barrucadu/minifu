@@ -97,8 +97,42 @@ run sched s0 = go s0 . initialise where
 
 stepThread :: C.MonadConc m => ThreadId -> (Threads m, IdSource) -> m (Threads m, IdSource)
 stepThread tid (threads, idsrc) = case M.lookup tid threads of
-  Just thrd -> undefined
-  Nothing -> pure (threads, idsrc)
+    Just thrd -> go (threadK thrd)
+    Nothing -> pure (threads, idsrc)
+  where
+    adjust f = M.adjust f tid
+    goto   k = adjust (\thrd -> thrd { threadK = k })
+    block mv = adjust (\thrd -> thrd { threadBlock = mv })
+    unblock v = fmap (\thrd ->
+      if threadBlock thrd == Just v
+      then thrd { threadBlock = Nothing }
+      else thrd)
+
+    go (Fork (MiniFu ma) k) =
+      let (tid', idsrc') = nextThreadId idsrc
+          thrd' = thread (K.runCont ma (\_ -> Stop (pure ())))
+      in pure (goto (k tid') (M.insert tid' thrd' threads), idsrc')
+    go (NewEmptyMVar k) = do
+      ref <- C.newCRef Nothing
+      let (mvid, idsrc') = nextMVarId idsrc
+      pure (goto (k (MVar mvid ref)) threads, idsrc')
+    go (PutMVar (MVar mvid ref) a k) = do
+      old <- C.readCRef ref
+      case old of
+        Just _ -> pure (block (Just mvid) threads, idsrc)
+        Nothing -> do
+          C.writeCRef ref (Just a)
+          pure (goto k (unblock mvid threads), idsrc)
+    go (TakeMVar (MVar mvid ref) k) = do
+      old <- C.readCRef ref
+      case old of
+        Just a -> do
+          C.writeCRef ref Nothing
+          pure (goto (k a) (unblock mvid threads), idsrc)
+        Nothing -> pure (block (Just mvid) threads, idsrc)
+    go (Stop mx) = do
+      mx
+      pure (M.delete tid threads, idsrc)
 
 -------------------------------------------------------------------------------
 
