@@ -4,10 +4,11 @@
 module Test.MiniFu where
 
 import qualified Control.Concurrent.Classy as C
-import Data.List.NonEmpty (NonEmpty(..))
 import qualified Control.Monad.Cont as K
+import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.Maybe (isNothing)
 
 example :: MiniFu m Int
 example = do
@@ -81,7 +82,23 @@ minifu sched s (MiniFu ma) = do
 
 -- | Run a collection of threads to completion.
 run :: C.MonadConc m => Scheduler s -> s -> PrimOp m -> m s
-run sched s0 = undefined
+run sched s0 = go s0 . initialise where
+  go s (threads, idsrc)
+    | initialThreadId `M.member` threads = case runnable threads of
+      Just tids ->
+        let (chosen, s') = sched tids s
+        in go s' =<< stepThread chosen (threads, idsrc)
+      Nothing -> pure s
+    | otherwise = pure s
+
+  runnable = nonEmpty . M.keys . M.filter (isNothing . threadBlock)
+
+  initialThreadId = fst (nextThreadId initialIdSource)
+
+stepThread :: C.MonadConc m => ThreadId -> (Threads m, IdSource) -> m (Threads m, IdSource)
+stepThread tid (threads, idsrc) = case M.lookup tid threads of
+  Just thrd -> undefined
+  Nothing -> pure (threads, idsrc)
 
 -------------------------------------------------------------------------------
 
