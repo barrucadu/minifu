@@ -17,6 +17,7 @@ library
   exposed-modules:     Test.MiniFu
   build-depends:       base >=4.9 && <4.10
                      , concurrency
+                     , containers
                      , mtl
   default-language:    Haskell2010
   ghc-options:         -Wall

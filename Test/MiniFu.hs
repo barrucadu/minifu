@@ -6,6 +6,8 @@ module Test.MiniFu where
 import qualified Control.Concurrent.Classy as C
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Control.Monad.Cont as K
+import Data.Map (Map)
+import qualified Data.Map as M
 
 example :: MiniFu m Int
 example = do
@@ -97,3 +99,29 @@ nextThreadId n = (ThreadId n, n + 1)
 -- | Get a new unique @MVar@ ID:
 nextMVarId :: IdSource -> (MVarId, IdSource)
 nextMVarId n = (MVarId n, n + 1)
+
+-------------------------------------------------------------------------------
+
+-- | A collection of threads is just a map of thread records keyed by
+-- ID.
+type Threads m = Map ThreadId (Thread m)
+
+-- | A thread is a continuation along with what @MVar@ it is blocked
+-- on.
+data Thread m = Thread
+  { threadK     :: PrimOp m
+  , threadBlock :: Maybe MVarId
+  }
+
+-- | Create a new thread
+thread :: PrimOp m -> Thread m
+thread k = Thread
+  { threadK     = k
+  , threadBlock = Nothing
+  }
+
+-- | Create the initial thread and ID source
+initialise :: PrimOp m -> (Threads m, IdSource)
+initialise pop =
+  let (tid, idsrc) = nextThreadId initialIdSource
+  in (M.singleton tid (thread pop), idsrc)
