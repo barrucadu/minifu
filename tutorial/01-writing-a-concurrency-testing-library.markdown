@@ -471,7 +471,7 @@ to implement MVars, so now try implementing CRefs!  Here are the
 functions should you have a go at writing:
 
 ```haskell
-data CRef m = -- ...
+data CRef m a = -- ...
 
 newCRef :: a -> MiniFu m (CRef m a)
 
