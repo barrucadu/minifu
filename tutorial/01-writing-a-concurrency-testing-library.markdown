@@ -450,6 +450,11 @@ Just 1
 
 Success!
 
+A random scheduler is fine for demonstration purposes, but not so
+great for testing.  Different seeds may lead to the same execution,
+which makes it hard to know how many executions of a test is enough.
+It can be a useful technique, but for us this is only the beginning.
+
 
 Next time...
 ------------
@@ -481,3 +486,10 @@ Don't worry about any of the relaxed memory stuff implemented in
 dejafu, just do sequential consistency (and if you don't know what
 that means: it means to do the obvious).  I'll put up a solution (and
 maybe do a little refactoring) before the next post.
+
+---
+
+Thanks to [José Manuel Calderón Trilla][jmct] for reading an earlier
+draft of this post.
+
+[jmct]: https://twitter.com/josecalderon
