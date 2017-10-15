@@ -136,6 +136,7 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
       if threadBlock thrd == Just v
       then thrd { threadBlock = Nothing }
       else thrd)
+    simple f = pure (f threads, idsrc)
 
     go (Fork (MiniFu ma) k) =
       let (tid', idsrc') = nextThreadId idsrc
@@ -148,32 +149,32 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
     go (PutMVar (MVar mvid ref) a k) = do
       old <- C.readCRef ref
       case old of
-        Just _ -> pure (block (Just mvid) threads, idsrc)
+        Just _ -> simple (block (Just mvid))
         Nothing -> do
           C.writeCRef ref (Just a)
-          pure (goto k (unblock mvid threads), idsrc)
+          simple (goto k . unblock mvid)
     go (TakeMVar (MVar mvid ref) k) = do
       old <- C.readCRef ref
       case old of
         Just a -> do
           C.writeCRef ref Nothing
-          pure (goto (k a) (unblock mvid threads), idsrc)
-        Nothing -> pure (block (Just mvid) threads, idsrc)
+          simple (goto (k a) . unblock mvid)
+        Nothing -> simple (block (Just mvid))
     go (NewCRef a k) = do
       ref <- C.newCRef a
-      pure (goto (k (CRef ref)) threads, idsrc)
+      simple (goto (k (CRef ref)))
     go (ReadCRef (CRef ref) k) = do
       cur <- C.readCRef ref
-      pure (goto (k cur) threads, idsrc)
+      simple (goto (k cur))
     go (WriteCRef (CRef ref) a k) = do
       C.writeCRef ref a
-      pure (goto k threads, idsrc)
+      simple (goto k)
     go (ModifyCRef (CRef ref) f k) = do
       new <- C.atomicModifyCRef ref f
-      pure (goto (k new) threads, idsrc)
+      simple (goto (k new))
     go (Stop mx) = do
       mx
-      pure (M.delete tid threads, idsrc)
+      simple (M.delete tid)
 
 -------------------------------------------------------------------------------
 
