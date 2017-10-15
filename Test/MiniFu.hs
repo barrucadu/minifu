@@ -159,6 +159,18 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
           C.writeCRef ref Nothing
           pure (goto (k a) (unblock mvid threads), idsrc)
         Nothing -> pure (block (Just mvid) threads, idsrc)
+    go (NewCRef a k) = do
+      ref <- C.newCRef a
+      pure (goto (k (CRef ref)) threads, idsrc)
+    go (ReadCRef (CRef ref) k) = do
+      cur <- C.readCRef ref
+      pure (goto (k cur) threads, idsrc)
+    go (WriteCRef (CRef ref) a k) = do
+      C.writeCRef ref a
+      pure (goto k threads, idsrc)
+    go (ModifyCRef (CRef ref) f k) = do
+      new <- C.atomicModifyCRef ref f
+      pure (goto (k new) threads, idsrc)
     go (Stop mx) = do
       mx
       pure (M.delete tid threads, idsrc)
