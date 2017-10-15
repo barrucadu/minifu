@@ -17,3 +17,5 @@ follow along.  The tags are:
    end of the first post
 2. [homework-01](https://github.com/barrucadu/minifu/tree/homework-01):
    homework solution for the first post (`CRef` functions)
+2. [pre-02](https://github.com/barrucadu/minifu/tree/pre-02):
+   some refactoring and an implementation of `readMVar`
