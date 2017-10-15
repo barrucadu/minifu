@@ -71,7 +71,7 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
   where
     adjust f = M.adjust f tid
     goto   k = adjust (\thrd -> thrd { threadK = k })
-    block mv = adjust (\thrd -> thrd { threadBlock = mv })
+    block  v = adjust (\thrd -> thrd { threadBlock = Just v })
     unblock v = fmap (\thrd ->
       if threadBlock thrd == Just v
       then thrd { threadBlock = Nothing }
@@ -89,7 +89,7 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
     go (PutMVar (MVar mvid ref) a k) = do
       old <- C.readCRef ref
       case old of
-        Just _ -> simple (block (Just mvid))
+        Just _ -> simple (block mvid)
         Nothing -> do
           C.writeCRef ref (Just a)
           simple (goto k . unblock mvid)
@@ -99,7 +99,7 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
         Just a -> do
           C.writeCRef ref Nothing
           simple (goto (k a) . unblock mvid)
-        Nothing -> simple (block (Just mvid))
+        Nothing -> simple (block mvid)
     go (NewCRef a k) = do
       ref <- C.newCRef a
       simple (goto (k (CRef ref)))
