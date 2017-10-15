@@ -26,6 +26,7 @@ data PrimOp m where
   Fork :: MiniFu m () -> (ThreadId -> PrimOp m) -> PrimOp m
   NewEmptyMVar :: (MVar m a -> PrimOp m) -> PrimOp m
   PutMVar :: MVar m a -> a -> PrimOp m -> PrimOp m
+  ReadMVar :: MVar m a -> (a -> PrimOp m) -> PrimOp m
   TakeMVar :: MVar m a -> (a -> PrimOp m) -> PrimOp m
   NewCRef :: a -> (CRef m a -> PrimOp m) -> PrimOp m
   ReadCRef :: CRef m a -> (a -> PrimOp m) -> PrimOp m
@@ -100,6 +101,9 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
           C.writeCRef ref Nothing
           simple (goto (k a) . unblock mvid)
         Nothing -> simple (block mvid)
+    go (ReadMVar (MVar mvid ref) k) = do
+      cur <- C.readCRef ref
+      simple $ maybe (block mvid) (goto . k) cur
     go (NewCRef a k) = do
       ref <- C.newCRef a
       simple (goto (k (CRef ref)))

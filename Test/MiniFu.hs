@@ -39,6 +39,11 @@ newEmptyMVar = MiniFu (K.cont NewEmptyMVar)
 putMVar :: MVar m a -> a -> MiniFu m ()
 putMVar v a = MiniFu (K.cont (\k -> PutMVar v a (k ())))
 
+-- | Block until a value is present in the @MVar@, and then return
+-- it. This does not "remove" the value, multiple reads are possible.
+readMVar :: MVar m a -> MiniFu m a
+readMVar v = MiniFu (K.cont (ReadMVar v))
+
 -- | Take a value from a @MVar@. This "empties" the @MVar@, allowing a
 -- new value to be put in. This will block if there is no value in the
 -- @MVar@ already, until one has been put.
