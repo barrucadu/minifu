@@ -38,11 +38,15 @@ newtype MiniFu m a = MiniFu { runMiniFu :: K.Cont (PrimOp m) a }
 
 -- | One of the basic actions that a @MonadConc@ can do.
 data PrimOp m where
-  Fork         :: MiniFu m () -> (ThreadId -> PrimOp m) -> PrimOp m
-  NewEmptyMVar :: (MVar m a -> PrimOp m)                -> PrimOp m
-  PutMVar      :: MVar m a -> a -> PrimOp m             -> PrimOp m
-  TakeMVar     :: MVar m a -> (a -> PrimOp m)           -> PrimOp m
-  Stop         :: m ()                                  -> PrimOp m
+  Fork :: MiniFu m () -> (ThreadId -> PrimOp m) -> PrimOp m
+  NewEmptyMVar :: (MVar m a -> PrimOp m) -> PrimOp m
+  PutMVar :: MVar m a -> a -> PrimOp m -> PrimOp m
+  TakeMVar :: MVar m a -> (a -> PrimOp m) -> PrimOp m
+  NewCRef :: a -> (CRef m a -> PrimOp m) -> PrimOp m
+  ReadCRef :: CRef m a -> (a -> PrimOp m) -> PrimOp m
+  WriteCRef :: CRef m a -> a -> PrimOp m -> PrimOp m
+  ModifyCRef :: CRef m a -> (a -> (a, b)) -> (b -> PrimOp m) -> PrimOp m
+  Stop :: m () -> PrimOp m
 
 -- | @MVar@s have a unique ID too, used in thread blocking.
 newtype MVarId = MVarId Int
@@ -54,6 +58,9 @@ data MVar m a = MVar
   { mvarId  :: MVarId
   , mvarRef :: C.CRef m (Maybe a)
   }
+
+-- | A @CRef@ just delegates directly to the underlying monad.
+newtype CRef m a = CRef { crefRef :: C.CRef m a }
 
 -- | Fork a computation to happen concurrently.
 fork :: MiniFu m () -> MiniFu m ThreadId
@@ -74,6 +81,22 @@ putMVar v a = MiniFu (K.cont (\k -> PutMVar v a (k ())))
 -- @MVar@ already, until one has been put.
 takeMVar :: MVar m a -> MiniFu m a
 takeMVar v = MiniFu (K.cont (TakeMVar v))
+
+-- | Create a new reference.
+newCRef :: a -> MiniFu m (CRef m a)
+newCRef a = MiniFu (K.cont (NewCRef a))
+
+-- | Read the current value stored in a reference.
+readCRef :: CRef m a -> MiniFu m a
+readCRef r = MiniFu (K.cont (ReadCRef r))
+
+-- | Write a new value into an @CRef@.
+writeCRef :: CRef m a -> a -> MiniFu m ()
+writeCRef r a = MiniFu (K.cont (\k -> WriteCRef r a (k ())))
+
+-- | Atomically modify the value stored in a reference.
+atomicModifyCRef :: CRef m a -> (a -> (a, b)) -> MiniFu m b
+atomicModifyCRef r f = MiniFu (K.cont (ModifyCRef r f))
 
 -------------------------------------------------------------------------------
 
