@@ -15,3 +15,5 @@ follow along.  The tags are:
 
 1. [post-01](https://github.com/barrucadu/minifu/tree/post-01):
    end of the first post
+2. [homework-01](https://github.com/barrucadu/minifu/tree/homework-01):
+   homework solution for the first post (`CRef` functions)
