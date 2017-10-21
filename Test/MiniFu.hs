@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Test.MiniFu
   ( module Test.MiniFu
   -- * Re-exports
@@ -6,6 +7,7 @@ module Test.MiniFu
 
 import qualified Control.Concurrent.Classy as C
 import qualified Control.Exception as E
+import Control.Monad (join)
 import qualified Control.Monad.Cont as K
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified System.Random as R
@@ -19,10 +21,39 @@ example = do
   fork (putMVar a 2)
   takeMVar a
 
+example_sync :: MiniFu m Int
+example_sync = do
+  a <- newEmptyMVar
+  fork (putMVar a (pure 1))
+  fork (putMVar a (throw E.NonTermination))
+  fork (putMVar a (throw E.AllocationLimitExceeded))
+  catch
+    (catch
+      (join (readMVar a))
+      (\(_ :: E.AllocationLimitExceeded) -> pure 2))
+    (\(_ :: E.NonTermination) -> pure 3)
+
+example_async :: MiniFu m String
+example_async = do
+  a <- newEmptyMVar
+  tid <- fork (putMVar a "hello from the other thread")
+  throwTo tid E.ThreadKilled
+  readMVar a
+
 demo :: IO ()
 demo = do
   g <- R.newStdGen
   print . fst =<< minifu randomSched g example
+
+demo_sync :: IO ()
+demo_sync = do
+  g <- R.newStdGen
+  print . fst =<< minifu randomSched g example_sync
+
+demo_async :: IO ()
+demo_async = do
+  g <- R.newStdGen
+  print . fst =<< minifu randomSched g example_async
 
 -------------------------------------------------------------------------------
 
