@@ -164,13 +164,19 @@ type Threads m = Map ThreadId (Thread m)
 data Thread m = Thread
   { threadK     :: PrimOp m
   , threadBlock :: Maybe MVarId
+  , threadExc   :: [Handler m]
   }
+
+-- | An exception handler.
+data Handler m where
+  Handler :: E.Exception e => (e -> PrimOp m) -> Handler m
 
 -- | Create a new thread
 thread :: PrimOp m -> Thread m
 thread k = Thread
   { threadK     = k
   , threadBlock = Nothing
+  , threadExc   = []
   }
 
 -- | Create the initial thread and ID source
@@ -178,3 +184,14 @@ initialise :: PrimOp m -> (Threads m, IdSource)
 initialise pop =
   let (tid, idsrc) = nextThreadId initialIdSource
   in (M.singleton tid (thread pop), idsrc)
+
+-- | Raise an exception in a thread.  If this returns @Nothing@ the
+-- thread has been killed.
+raise :: E.Exception e => e -> Thread m -> Maybe (Thread m)
+raise exc thrd = go (threadExc thrd) where
+  go (Handler h:hs) = case h <$> E.fromException exc' of
+    Just pop -> Just (thrd { threadK = pop, threadBlock = Nothing, threadExc = hs })
+    Nothing  -> go hs
+  go [] = Nothing
+
+  exc' = E.toException exc
