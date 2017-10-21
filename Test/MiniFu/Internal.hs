@@ -132,6 +132,18 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
     go (ModifyCRef (CRef ref) f k) = do
       new <- C.atomicModifyCRef ref f
       simple (goto (k new))
+    go (Throw e) =
+      simple (M.update (raise e) tid)
+    go (Catch (MiniFu ma) h k) = simple . adjust $ \thrd -> thrd
+      { threadK   = K.runCont ma (PopH . k)
+      , threadExc =
+        let h' exc = K.runCont (runMiniFu (h exc)) k
+        in Handler h' : threadExc thrd
+      }
+    go (PopH k) = simple . adjust $ \thrd -> thrd
+      { threadK   = k
+      , threadExc = tail (threadExc thrd)
+      }
     go (Stop mx) = do
       mx
       simple (M.delete tid)
