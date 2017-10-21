@@ -4,6 +4,8 @@
 module Test.MiniFu.Internal where
 
 import qualified Control.Concurrent.Classy as C
+import qualified Control.Exception as E
+import qualified Control.Monad.Catch as EM
 import qualified Control.Monad.Cont as K
 import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import Data.Map (Map)
@@ -21,17 +23,31 @@ type Scheduler s = NonEmpty ThreadId -> s -> (ThreadId, s)
 newtype MiniFu m a = MiniFu { runMiniFu :: K.Cont (PrimOp m) a }
   deriving (Functor, Applicative, Monad)
 
+instance EM.MonadThrow (MiniFu m) where
+  throwM e = MiniFu (K.cont (\_ -> Throw e))
+
+instance EM.MonadCatch (MiniFu m) where
+  catch act h = MiniFu (K.cont (Catch act h))
+
 -- | One of the basic actions that a @MonadConc@ can do.
 data PrimOp m where
+  -- threading
   Fork :: MiniFu m () -> (ThreadId -> PrimOp m) -> PrimOp m
+  -- mvars
   NewEmptyMVar :: (MVar m a -> PrimOp m) -> PrimOp m
   PutMVar :: MVar m a -> a -> PrimOp m -> PrimOp m
   ReadMVar :: MVar m a -> (a -> PrimOp m) -> PrimOp m
   TakeMVar :: MVar m a -> (a -> PrimOp m) -> PrimOp m
+  -- crefs
   NewCRef :: a -> (CRef m a -> PrimOp m) -> PrimOp m
   ReadCRef :: CRef m a -> (a -> PrimOp m) -> PrimOp m
   WriteCRef :: CRef m a -> a -> PrimOp m -> PrimOp m
   ModifyCRef :: CRef m a -> (a -> (a, b)) -> (b -> PrimOp m) -> PrimOp m
+  -- exceptions
+  Throw :: E.Exception e => e -> PrimOp m
+  Catch :: E.Exception e => MiniFu m a -> (e -> MiniFu m a) -> (a -> PrimOp m) -> PrimOp m
+  PopH  :: PrimOp m -> PrimOp m
+  -- misc
   Stop :: m () -> PrimOp m
 
 -- | @MVar@s have a unique ID too, used in thread blocking.

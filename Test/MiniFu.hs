@@ -5,6 +5,7 @@ module Test.MiniFu
   ) where
 
 import qualified Control.Concurrent.Classy as C
+import qualified Control.Exception as E
 import qualified Control.Monad.Cont as K
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified System.Random as R
@@ -65,6 +66,17 @@ writeCRef r a = MiniFu (K.cont (\k -> WriteCRef r a (k ())))
 -- | Atomically modify the value stored in a reference.
 atomicModifyCRef :: CRef m a -> (a -> (a, b)) -> MiniFu m b
 atomicModifyCRef r f = MiniFu (K.cont (ModifyCRef r f))
+
+-- | Throw an exception. This will \"bubble up\" looking for an
+-- exception handler capable of dealing with it and, if one is not
+-- found, the thread is killed.
+throw :: E.Exception e => e -> MiniFu m a
+throw e = MiniFu (K.cont (\_ -> Throw e))
+
+-- | Catch an exception raised by 'throw'.
+catch :: E.Exception e => MiniFu m a -> (e -> MiniFu m a) -> MiniFu m a
+catch act h = MiniFu (K.cont (Catch act h))
+
 
 -------------------------------------------------------------------------------
 
