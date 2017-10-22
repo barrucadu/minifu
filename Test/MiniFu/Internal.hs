@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Test.MiniFu.Internal where
 
@@ -29,6 +30,10 @@ instance EM.MonadThrow (MiniFu m) where
 instance EM.MonadCatch (MiniFu m) where
   catch act h = MiniFu (K.cont (Catch act h))
 
+instance EM.MonadMask (MiniFu m) where
+  mask ma = MiniFu (K.cont (InMask E.MaskedInterruptible ma))
+  uninterruptibleMask ma = MiniFu (K.cont (InMask E.MaskedUninterruptible ma))
+
 -- | One of the basic actions that a @MonadConc@ can do.
 data PrimOp m where
   -- threading
@@ -49,6 +54,7 @@ data PrimOp m where
   Catch :: E.Exception e => MiniFu m a -> (e -> MiniFu m a) -> (a -> PrimOp m) -> PrimOp m
   PopH  :: PrimOp m -> PrimOp m
   Mask  :: E.MaskingState -> PrimOp m -> PrimOp m
+  InMask :: E.MaskingState -> ((forall x. MiniFu m x -> MiniFu m x) -> MiniFu m a) -> (a -> PrimOp m) -> PrimOp m
   -- misc
   Stop :: m () -> PrimOp m
 

@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes #-}
 module Test.MiniFu
   ( module Test.MiniFu
   -- * Re-exports
@@ -112,6 +113,31 @@ catch act h = MiniFu (K.cont (Catch act h))
 -- exception is delivered.
 throwTo :: E.Exception e => ThreadId -> e -> MiniFu m ()
 throwTo tid e = MiniFu (K.cont (\k -> ThrowTo tid e (k ())))
+
+-- | Executes a computation with asynchronous exceptions masked. That
+-- is, any thread which attempts to raise an exception in the current
+-- thread with throwTo will be blocked until asynchronous exceptions
+-- are unmasked again.
+--
+-- The argument passed to mask is a function that takes as its
+-- argument another function, which can be used to restore the
+-- prevailing masking state within the context of the masked
+-- computation.  This function should not be used within an
+-- 'uninterruptibleMask'.
+mask :: ((forall x. MiniFu m x -> MiniFu m x) -> MiniFu m a) -> MiniFu m a
+mask ma = MiniFu (K.cont (InMask E.MaskedInterruptible ma))
+
+-- | Like mask, but the masked computation is not interruptible. THIS
+-- SHOULD BE USED WITH GREAT CARE, because if a thread executing in
+-- uninterruptibleMask blocks for any reason, then the thread (and
+-- possibly the program, if this is the main thread) will be
+-- unresponsive and unkillable. This function should only be necessary
+-- if you need to mask exceptions around an interruptible operation,
+-- and you can guarantee that the interruptible operation will only
+-- block for a short period of time.  The supplied unmasking function
+-- should not be used within a 'mask'.
+uninterruptibleMask :: ((forall x. MiniFu m x -> MiniFu m x) -> MiniFu m a) -> MiniFu m a
+uninterruptibleMask ma = MiniFu (K.cont (InMask E.MaskedUninterruptible ma))
 
 -------------------------------------------------------------------------------
 
