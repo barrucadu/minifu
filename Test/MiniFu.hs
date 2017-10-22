@@ -108,6 +108,10 @@ throw e = MiniFu (K.cont (\_ -> Throw e))
 catch :: E.Exception e => MiniFu m a -> (e -> MiniFu m a) -> MiniFu m a
 catch act h = MiniFu (K.cont (Catch act h))
 
+-- | Throw an exception to the target thread. This blocks until the
+-- exception is delivered.
+throwTo :: E.Exception e => ThreadId -> e -> MiniFu m ()
+throwTo tid e = MiniFu (K.cont (\k -> ThrowTo tid e (k ())))
 
 -------------------------------------------------------------------------------
 

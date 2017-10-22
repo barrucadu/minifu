@@ -10,7 +10,7 @@ import qualified Control.Monad.Cont as K
 import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 
 -- | Threads are just identified by their creation order.
 newtype ThreadId = ThreadId Int
@@ -45,6 +45,7 @@ data PrimOp m where
   ModifyCRef :: CRef m a -> (a -> (a, b)) -> (b -> PrimOp m) -> PrimOp m
   -- exceptions
   Throw :: E.Exception e => e -> PrimOp m
+  ThrowTo :: E.Exception e => ThreadId -> e -> PrimOp m -> PrimOp m
   Catch :: E.Exception e => MiniFu m a -> (e -> MiniFu m a) -> (a -> PrimOp m) -> PrimOp m
   PopH  :: PrimOp m -> PrimOp m
   Mask  :: E.MaskingState -> PrimOp m -> PrimOp m
@@ -135,6 +136,11 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
       simple (goto (k new))
     go (Throw e) =
       simple (M.update (raise e) tid)
+    go (ThrowTo threadid e k) = simple $ case M.lookup threadid threads of
+      Just t
+        | isInterruptible t -> goto k . M.update (raise e) threadid
+        | otherwise         -> block (Left threadid)
+      Nothing -> goto k
     go (Catch (MiniFu ma) h k) = simple . adjust $ \thrd -> thrd
       { threadK   = K.runCont ma (PopH . k)
       , threadExc =
@@ -216,3 +222,9 @@ raise exc thrd = go (threadExc thrd) where
   go [] = Nothing
 
   exc' = E.toException exc
+
+-- | Check if a thread is interruptible by an asynchronous exception.
+isInterruptible :: Thread m -> Bool
+isInterruptible thrd =
+  threadMask thrd == E.Unmasked ||
+  (threadMask thrd == E.MaskedInterruptible && isJust (threadBlock thrd))
