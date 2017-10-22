@@ -73,9 +73,13 @@ run :: C.MonadConc m => Scheduler s -> s -> PrimOp m -> m s
 run sched s0 = go s0 . initialise where
   go s (threads, idsrc)
     | initialThreadId `M.member` threads = case runnable threads of
-      Just tids ->
+      Just tids -> do
         let (chosen, s') = sched tids s
-        in go s' =<< stepThread chosen (threads, idsrc)
+        (threads', idsrc') <- stepThread chosen (threads, idsrc)
+        let threads'' = if (isInterruptible <$> M.lookup chosen threads') /= Just False
+                        then unblock (Left chosen) threads'
+                        else threads'
+        go s' (threads'', idsrc')
       Nothing -> pure s
     | otherwise = pure s
 
@@ -91,10 +95,6 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
     adjust f = M.adjust f tid
     goto   k = adjust (\thrd -> thrd { threadK = k })
     block  v = adjust (\thrd -> thrd { threadBlock = Just v })
-    unblock v = fmap (\thrd ->
-      if threadBlock thrd == Just v
-      then thrd { threadBlock = Nothing }
-      else thrd)
     simple f = pure (f threads, idsrc)
 
     go (Fork (MiniFu ma) k) =
@@ -228,3 +228,9 @@ isInterruptible :: Thread m -> Bool
 isInterruptible thrd =
   threadMask thrd == E.Unmasked ||
   (threadMask thrd == E.MaskedInterruptible && isJust (threadBlock thrd))
+
+unblock :: Functor f => Either ThreadId MVarId -> f (Thread m) -> f (Thread m)
+unblock v = fmap $ \thrd ->
+  if threadBlock thrd == Just v
+  then thrd { threadBlock = Nothing }
+  else thrd
