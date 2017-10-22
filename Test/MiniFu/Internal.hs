@@ -47,6 +47,7 @@ data PrimOp m where
   Throw :: E.Exception e => e -> PrimOp m
   Catch :: E.Exception e => MiniFu m a -> (e -> MiniFu m a) -> (a -> PrimOp m) -> PrimOp m
   PopH  :: PrimOp m -> PrimOp m
+  Mask  :: E.MaskingState -> PrimOp m -> PrimOp m
   -- misc
   Stop :: m () -> PrimOp m
 
@@ -137,12 +138,18 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
     go (Catch (MiniFu ma) h k) = simple . adjust $ \thrd -> thrd
       { threadK   = K.runCont ma (PopH . k)
       , threadExc =
-        let h' exc = K.runCont (runMiniFu (h exc)) k
+        let h' exc = flip K.runCont k $ do
+              K.cont (\c -> Mask (threadMask thrd) (c ()))
+              runMiniFu (h exc)
         in Handler h' : threadExc thrd
       }
     go (PopH k) = simple . adjust $ \thrd -> thrd
       { threadK   = k
       , threadExc = tail (threadExc thrd)
+      }
+    go (Mask ms k) = simple . adjust $ \thrd -> thrd
+      { threadK    = k
+      , threadMask = ms
       }
     go (Stop mx) = do
       mx
@@ -177,6 +184,7 @@ data Thread m = Thread
   { threadK     :: PrimOp m
   , threadBlock :: Maybe MVarId
   , threadExc   :: [Handler m]
+  , threadMask  :: E.MaskingState
   }
 
 -- | An exception handler.
@@ -189,6 +197,7 @@ thread k = Thread
   { threadK     = k
   , threadBlock = Nothing
   , threadExc   = []
+  , threadMask  = E.Unmasked
   }
 
 -- | Create the initial thread and ID source
