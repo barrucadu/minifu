@@ -107,20 +107,20 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
     go (PutMVar (MVar mvid ref) a k) = do
       old <- C.readCRef ref
       case old of
-        Just _ -> simple (block mvid)
+        Just _ -> simple (block (Right mvid))
         Nothing -> do
           C.writeCRef ref (Just a)
-          simple (goto k . unblock mvid)
+          simple (goto k . unblock (Right mvid))
     go (TakeMVar (MVar mvid ref) k) = do
       old <- C.readCRef ref
       case old of
         Just a -> do
           C.writeCRef ref Nothing
-          simple (goto (k a) . unblock mvid)
-        Nothing -> simple (block mvid)
+          simple (goto (k a) . unblock (Right mvid))
+        Nothing -> simple (block (Right mvid))
     go (ReadMVar (MVar mvid ref) k) = do
       cur <- C.readCRef ref
-      simple $ maybe (block mvid) (goto . k) cur
+      simple $ maybe (block (Right mvid)) (goto . k) cur
     go (NewCRef a k) = do
       ref <- C.newCRef a
       simple (goto (k (CRef ref)))
@@ -182,7 +182,7 @@ type Threads m = Map ThreadId (Thread m)
 -- on.
 data Thread m = Thread
   { threadK     :: PrimOp m
-  , threadBlock :: Maybe MVarId
+  , threadBlock :: Maybe (Either ThreadId MVarId)
   , threadExc   :: [Handler m]
   , threadMask  :: E.MaskingState
   }
