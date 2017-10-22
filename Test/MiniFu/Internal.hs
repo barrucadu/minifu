@@ -163,6 +163,18 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
       { threadK    = k
       , threadMask = ms
       }
+    go (InMask ms ma k) = simple . adjust $ \thrd -> thrd
+      { threadK =
+        let ms0 = threadMask thrd
+            umask :: MiniFu m x -> MiniFu m x
+            umask (MiniFu mx) = MiniFu $ do
+              K.cont (\c -> Mask ms0 (c ()))
+              x <- mx
+              K.cont (\c -> Mask ms (c ()))
+              pure x
+        in K.runCont (runMiniFu (ma umask)) (Mask ms0 . k)
+      , threadMask = ms
+      }
     go (Stop mx) = do
       mx
       simple (M.delete tid)
