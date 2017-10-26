@@ -150,8 +150,9 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
     go (Catch (MiniFu ma) h k) = simple . adjust $ \thrd -> thrd
       { threadK   = K.runCont ma (PopH . k)
       , threadExc =
-        let h' exc = flip K.runCont k $ do
-              K.cont (\c -> Mask (threadMask thrd) (c ()))
+        let ms0 = threadMask thread
+            h' exc = flip K.runCont k $ do
+              K.cont (\c -> Mask ms0 (c ()))
               runMiniFu (h exc)
         in Handler h' : threadExc thrd
       }

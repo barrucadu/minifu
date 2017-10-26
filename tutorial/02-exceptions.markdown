@@ -64,7 +64,8 @@ import qualified Control.Exception as E
 data PrimOp m where
   -- ...
   Throw :: E.Exception e => e -> PrimOp m
-  Catch :: E.Exception e => MiniFu m a -> (e -> MiniFu m a) -> (a -> PrimOp m) -> PrimOp m
+  Catch :: E.Exception e => MiniFu m a -> (e -> MiniFu m a) -> (a -> PrimOp m)
+        -> PrimOp m
   PopH  :: PrimOp m -> PrimOp m
 
 throw :: E.Exception e => e -> MiniFu m a
@@ -89,7 +90,7 @@ them.  This requires changing our `Thread` type and `thread` function:
 data Thread m = Thread
   { threadK     :: PrimOp m
   , threadBlock :: Maybe MVarId
-  , threadExc   :: [Handler m]
+  , threadExc   :: [Handler m]                              -- <- new
   }
 
 data Handler m where
@@ -99,7 +100,7 @@ thread :: PrimOp m -> Thread m
 thread k = Thread
   { threadK     = k
   , threadBlock = Nothing
-  , threadExc   = []
+  , threadExc   = []                                        -- <- new
   }
 ```
 
@@ -257,7 +258,7 @@ Asynchronous exceptions
 Asynchronous exceptions are like synchronous exceptions, except for
 two details:
 
-1. They are raised in a thread identified by `ThreadId`.  We can do
+1. They are thrown to a thread identified by `ThreadId`.  We can do
    this already with `raise`.
 2. Raising the exception may be blocked due to the target thread's
    *masking state*.  We need to do some extra work to implement this.
@@ -278,9 +279,9 @@ thread:
 ```haskell
 data Thread m = Thread
   { threadK     :: PrimOp m
-  , threadBlock :: Maybe (Either ThreadId MVarId)
+  , threadBlock :: Maybe (Either ThreadId MVarId)           -- <- new
   , threadExc   :: [Handler m]
-  , threadMask  :: E.MaskingState
+  , threadMask  :: E.MaskingState                           -- <- new
   }
 
 thread :: PrimOp m -> Thread m
@@ -288,7 +289,7 @@ thread k = Thread
   { threadK     = k
   , threadBlock = Nothing
   , threadExc   = []
-  , threadMask  = E.Unmasked
+  , threadMask  = E.Unmasked                                -- <- new
   }
 ```
 
@@ -324,8 +325,9 @@ stepThread {- ... -}
     go (Catch (MiniFu ma) h k) = simple . adjust $ \thrd -> thrd
       { threadK   = K.runCont ma (PopH . k)
       , threadExc =
-        let h' exc = flip K.runCont k $ do
-              K.cont (\c -> Mask (threadMask thrd) (c ()))
+        let ms0 = threadMask thrd                           -- <- new
+            h' exc = flip K.runCont k $ do
+              K.cont (\c -> Mask ms0 (c ()))                -- <- new
               runMiniFu (h exc)
         in Handler h' : threadExc thrd
       }
@@ -401,6 +403,7 @@ run sched s0 = go s0 . initialise where
         let threads'' = if (isInterruptible <$> M.lookup chosen threads') /= Just False
                         then unblock (Left chosen) threads'
                         else threads'
+            -- ^- new
         go s' (threads'', idsrc')
       Nothing -> pure s
     | otherwise = pure s
@@ -440,7 +443,8 @@ little clearer to have two separate ones:
 ```haskell
 data PrimOp m where
   -- ...
-  InMask :: E.MaskingState -> ((forall x. MiniFu m x -> MiniFu m x) -> MiniFu m a) -> (a -> PrimOp m) -> PrimOp m
+  InMask :: E.MaskingState -> ((forall x. MiniFu m x -> MiniFu m x) -> MiniFu m a)
+         -> (a -> PrimOp m) -> PrimOp m
 ```
 
 And here's the implementations of our masking functions:
@@ -460,11 +464,8 @@ instance MonadMask (MiniFu m) where
 ```
 
 The very last piece of the puzzle for exception handling in MiniFu is
-to implement this `InMask` primop.  The type looks quite intense, but
-it's really not that bad.  There are three parts: (1) we need to
-construct the polymorphic argument function; (2) we need to change the
-masking state; and (3) we need to run the inner continuation,
-resetting the masking state when done.
+to implement this `InMask` primop.  Its type looks quite intense, but
+the implementation is really not that bad.  There are three parts:
 
 ```haskell
 stepThread {- ... -}
@@ -473,13 +474,20 @@ stepThread {- ... -}
     go (InMask ms ma k) = simple . adjust $ \thrd -> thrd
       { threadK =
         let ms0 = threadMask thrd
+
+            -- (1) we need to construct the polymorphic argument function
             umask :: MiniFu m x -> MiniFu m x
             umask (MiniFu mx) = MiniFu $ do
               K.cont (\c -> Mask ms0 (c ()))
               x <- mx
               K.cont (\c -> Mask ms (c ()))
               pure x
+
+        -- (2) we need to run the inner continuation, resetting the masking state
+        -- when done
         in K.runCont (runMiniFu (ma umask)) (Mask ms0 . k)
+
+      -- (3) we need to change the masking state
       , threadMask = ms
       }
 ```
@@ -544,6 +552,6 @@ in one go.  Then we can finally get on to the testing.
 
 ---
 
-Thanks to [name][] for reading and earlier draft of this post.
+Thanks to [Will Sewell][] for reading an earlier draft of this post.
 
-[name]: url
+[Will Sewell]: https://twitter.com/willsewell_
