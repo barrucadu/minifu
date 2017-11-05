@@ -6,12 +6,13 @@ module Test.MiniFu.Internal where
 
 import qualified Control.Concurrent.Classy as C
 import qualified Control.Exception as E
+import Control.Monad (when)
 import qualified Control.Monad.Catch as EM
 import qualified Control.Monad.Cont as K
 import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (isJust, isNothing)
+import Data.Maybe (fromJust, isJust, isNothing)
 
 -- | Threads are just identified by their creation order.
 newtype ThreadId = ThreadId Int
@@ -114,40 +115,18 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
       ref <- C.newCRef Nothing
       let (mvid, idsrc') = nextMVarId idsrc
       pure (goto (k (MVar mvid ref)) threads, idsrc')
-    go (PutMVar (MVar mvid ref) a k) = do
-      old <- C.readCRef ref
-      case old of
-        Just _ -> simple (block (Right mvid))
-        Nothing -> do
-          C.writeCRef ref (Just a)
-          simple (goto k . unblock (Right mvid))
-    go (TakeMVar (MVar mvid ref) k) = do
-      old <- C.readCRef ref
-      case old of
-        Just a -> do
-          C.writeCRef ref Nothing
-          simple (goto (k a) . unblock (Right mvid))
-        Nothing -> simple (block (Right mvid))
-    go (ReadMVar (MVar mvid ref) k) = do
-      cur <- C.readCRef ref
-      simple $ maybe (block (Right mvid)) (goto . k) cur
-    go (TryPutMVar (MVar mvid ref) a k) = do
-      old <- C.readCRef ref
-      case old of
-        Just _ -> simple (goto (k False))
-        Nothing -> do
-          C.writeCRef ref (Just a)
-          simple (goto (k True) . unblock (Right mvid))
-    go (TryTakeMVar (MVar mvid ref) k) = do
-      old <- C.readCRef ref
-      case old of
-        Just a -> do
-          C.writeCRef ref Nothing
-          simple (goto (k (Just a)) . unblock (Right mvid))
-        Nothing -> simple (goto (k Nothing))
-    go (TryReadMVar (MVar _ ref) k) = do
-      cur <- C.readCRef ref
-      simple (goto (k cur))
+    go (PutMVar mvar a k) =
+      simple . ($tid) =<< putIntoMVar Blocking mvar a (const k)
+    go (TakeMVar mvar k) =
+      simple . ($tid) =<< seeIntoMVar Blocking Emptying mvar (k . fromJust)
+    go (ReadMVar mvar k) =
+      simple . ($tid) =<< seeIntoMVar Blocking NonEmptying mvar (k . fromJust)
+    go (TryPutMVar mvar a k) =
+      simple . ($tid) =<< putIntoMVar NonBlocking mvar a k
+    go (TryTakeMVar mvar k) =
+      simple . ($tid) =<< seeIntoMVar NonBlocking Emptying mvar k
+    go (TryReadMVar mvar k) =
+      simple . ($tid) =<< seeIntoMVar NonBlocking NonEmptying mvar k
     go (NewCRef a k) = do
       ref <- C.newCRef a
       simple (goto (k (CRef ref)))
@@ -268,8 +247,57 @@ isInterruptible thrd =
   threadMask thrd == E.Unmasked ||
   (threadMask thrd == E.MaskedInterruptible && isJust (threadBlock thrd))
 
+-- | Block a thread.
+block :: Either ThreadId MVarId -> ThreadId -> Threads m -> Threads m
+block v = M.adjust (\thrd -> thrd { threadBlock = Just v })
+
+-- | Unblock all matching threads.
 unblock :: Functor f => Either ThreadId MVarId -> f (Thread m) -> f (Thread m)
 unblock v = fmap $ \thrd ->
   if threadBlock thrd == Just v
   then thrd { threadBlock = Nothing }
   else thrd
+
+-- | Change the continuation of a thread.
+goto :: PrimOp m -> ThreadId -> Threads m -> Threads m
+goto k = M.adjust (\thrd -> thrd { threadK = k })
+
+-------------------------------------------------------------------------------
+
+data Blocking = Blocking | NonBlocking
+data Emptying = Emptying | NonEmptying deriving Eq
+
+-- | Abstraction over @putMVar@ and @tryPutMVar@
+putIntoMVar :: C.MonadConc m
+  => Blocking
+  -> MVar m a
+  -> a
+  -> (Bool -> PrimOp m)
+  -> m (ThreadId -> Threads m -> Threads m)
+putIntoMVar blocking (MVar mvid ref) a k = do
+  old <- C.readCRef ref
+  case old of
+    Just _ -> pure $ case blocking of
+      Blocking    -> block (Right mvid)
+      NonBlocking -> goto (k False)
+    Nothing -> do
+      C.writeCRef ref (Just a)
+      pure $ \tid -> goto (k True) tid . unblock (Right mvid)
+
+-- | Abstraction over @readMVar@, @takeMVar@, @tryReadMVar@, and
+-- @tryTakeMVar@.
+seeIntoMVar :: C.MonadConc m
+  => Blocking
+  -> Emptying
+  -> MVar m a
+  -> (Maybe a -> PrimOp m)
+  -> m (ThreadId -> Threads m -> Threads m)
+seeIntoMVar blocking emptying (MVar mvid ref) k = do
+  old <- C.readCRef ref
+  case old of
+    Just a -> do
+      when (emptying == Emptying) (C.writeCRef ref Nothing)
+      pure $ \tid -> goto (k (Just a)) tid . unblock (Right mvid)
+    Nothing -> pure $ case blocking of
+      Blocking    -> block (Right mvid)
+      NonBlocking -> goto (k Nothing)
