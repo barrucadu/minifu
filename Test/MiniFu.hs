@@ -72,16 +72,34 @@ newEmptyMVar = MiniFu (K.cont NewEmptyMVar)
 putMVar :: MVar m a -> a -> MiniFu m ()
 putMVar v a = MiniFu (K.cont (\k -> PutMVar v a (k ())))
 
+-- | Attempt to put a value in a @MVar@ non-blockingly, returning
+-- 'True' (and filling the @MVar@) if there was nothing there,
+-- otherwise returning 'False'.
+tryPutMVar :: MVar m a -> a -> MiniFu m Bool
+tryPutMVar v a = MiniFu (K.cont (TryPutMVar v a))
+
 -- | Block until a value is present in the @MVar@, and then return
 -- it. This does not "remove" the value, multiple reads are possible.
 readMVar :: MVar m a -> MiniFu m a
 readMVar v = MiniFu (K.cont (ReadMVar v))
+
+-- | Attempt to read a value from a @MVar@ non-blockingly, returning a
+-- 'Just' if there is something there, otherwise returning
+-- 'Nothing'. As with 'readMVar', this does not \"remove\" the value.
+tryReadMVar :: MVar m a -> MiniFu m (Maybe a)
+tryReadMVar v = MiniFu (K.cont (TryReadMVar v))
 
 -- | Take a value from a @MVar@. This "empties" the @MVar@, allowing a
 -- new value to be put in. This will block if there is no value in the
 -- @MVar@ already, until one has been put.
 takeMVar :: MVar m a -> MiniFu m a
 takeMVar v = MiniFu (K.cont (TakeMVar v))
+
+-- | Attempt to take a value from a @MVar@ non-blockingly, returning a
+-- 'Just' (and emptying the @MVar@) if there was something there,
+-- otherwise returning 'Nothing'.
+tryTakeMVar :: MVar m a -> MiniFu m (Maybe a)
+tryTakeMVar v = MiniFu (K.cont (TryTakeMVar v))
 
 -- | Create a new reference.
 newCRef :: a -> MiniFu m (CRef m a)

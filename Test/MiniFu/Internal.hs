@@ -43,6 +43,9 @@ data PrimOp m where
   PutMVar :: MVar m a -> a -> PrimOp m -> PrimOp m
   ReadMVar :: MVar m a -> (a -> PrimOp m) -> PrimOp m
   TakeMVar :: MVar m a -> (a -> PrimOp m) -> PrimOp m
+  TryPutMVar :: MVar m a -> a -> (Bool -> PrimOp m) -> PrimOp m
+  TryReadMVar :: MVar m a -> (Maybe a -> PrimOp m) -> PrimOp m
+  TryTakeMVar :: MVar m a -> (Maybe a -> PrimOp m) -> PrimOp m
   -- crefs
   NewCRef :: a -> (CRef m a -> PrimOp m) -> PrimOp m
   ReadCRef :: CRef m a -> (a -> PrimOp m) -> PrimOp m
@@ -128,6 +131,23 @@ stepThread tid (threads, idsrc) = case M.lookup tid threads of
     go (ReadMVar (MVar mvid ref) k) = do
       cur <- C.readCRef ref
       simple $ maybe (block (Right mvid)) (goto . k) cur
+    go (TryPutMVar (MVar mvid ref) a k) = do
+      old <- C.readCRef ref
+      case old of
+        Just _ -> simple (goto (k False))
+        Nothing -> do
+          C.writeCRef ref (Just a)
+          simple (goto (k True) . unblock (Right mvid))
+    go (TryTakeMVar (MVar mvid ref) k) = do
+      old <- C.readCRef ref
+      case old of
+        Just a -> do
+          C.writeCRef ref Nothing
+          simple (goto (k (Just a)) . unblock (Right mvid))
+        Nothing -> simple (goto (k Nothing))
+    go (TryReadMVar (MVar _ ref) k) = do
+      cur <- C.readCRef ref
+      simple (goto (k cur))
     go (NewCRef a k) = do
       ref <- C.newCRef a
       simple (goto (k (CRef ref)))
